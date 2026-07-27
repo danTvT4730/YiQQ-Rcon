@@ -1,0 +1,4 @@
+ServerDialog 1.0 ServerDialog.qml
+HistoryDialog 1.0 HistoryDialog.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+NotificationDialog 1.0 NotificationDialog.qml

@@ -1,0 +1,5 @@
+ServerSelectPage 1.0 ServerSelectPage.qml
+ConsolePage 1.0 ConsolePage.qml
+LogsPage 1.0 LogsPage.qml
+AboutPage 1.0 AboutPage.qml
+SettingsPage 1.0 SettingsPage.qml

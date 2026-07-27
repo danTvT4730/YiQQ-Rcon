@@ -1,0 +1,14 @@
+module components
+Icon 1.0 Icon.qml
+PrimaryButton 1.0 PrimaryButton.qml
+GhostButton 1.0 GhostButton.qml
+IconButton 1.0 IconButton.qml
+StyledTextField 1.0 StyledTextField.qml
+StyledSpinBox 1.0 StyledSpinBox.qml
+StyledCheckBox 1.0 StyledCheckBox.qml
+StyledComboBox 1.0 StyledComboBox.qml
+StatusDot 1.0 StatusDot.qml
+TabButton 1.0 TabButton.qml
+QuickCmdButton 1.0 QuickCmdButton.qml
+LinkPill 1.0 LinkPill.qml
+StyledScrollView 1.0 StyledScrollView.qml
