@@ -1,6 +1,13 @@
 # YiQQ-Rcon
 基于 Python + PySide6 + QML 构建的现代风格 RCON 管理工具，支持多种游戏服务器的远程管理。
 
+<table>
+  <tr>
+    <td><img src="assets/preview_photo_1.png" alt="预览图 1" width="100%"></td>
+    <td><img src="assets/preview_photo_2.png" alt="预览图 2" width="100%"></td>
+  </tr>
+</table>
+
 ## 功能特性
 
 - **多服务器管理** - 集中管理多个 RCON 服务器，一键切换连接
