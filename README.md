@@ -22,11 +22,12 @@
 
 ## 支持的游戏
 
-- Minecraft
-- Squad
-- Counter-Strike 2
-- 幻兽帕鲁 (Palworld)
-- 通用 RCON 服务
+支持任何使用标准 RCON 协议的游戏服务器，以下仅为经过测试的典型示例：
+
+![Minecraft](https://img.shields.io/badge/Minecraft-62B47A?logo=minecraft&logoColor=white)
+![Squad](https://img.shields.io/badge/Squad-555555?logoColor=white)
+![Counter-Strike 2](https://img.shields.io/badge/Counter--Strike%202-FFA500?logo=counterstrike&logoColor=white)
+![Palworld](https://img.shields.io/badge/Palworld-FF6B35?logoColor=white)
 
 ## 技术栈
 
