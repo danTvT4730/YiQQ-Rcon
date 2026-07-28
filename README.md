@@ -24,10 +24,10 @@
 
 支持任何使用标准 RCON 协议的游戏服务器，以下仅为经过测试的典型示例：
 
-![Minecraft](https://img.shields.io/badge/Minecraft-62B47A?logo=minecraft&logoColor=white)
-![Squad](https://img.shields.io/badge/Squad-555555?logoColor=white)
-![Counter-Strike 2](https://img.shields.io/badge/Counter--Strike%202-FFA500?logo=counterstrike&logoColor=white)
-![Palworld](https://img.shields.io/badge/Palworld-FF6B35?logoColor=white)
+- <img src="https://cdn.simpleicons.org/minecraft" height="24" alt=""> Minecraft
+- <img src="https://shared.steamstatic.com/store_item_assets/steam/apps/393380/logo.png" height="24" alt=""> Squad
+- <img src="https://cdn.simpleicons.org/counterstrike" height="24" alt=""> Counter-Strike 2
+- <img src="https://shared.steamstatic.com/store_item_assets/steam/apps/1623730/logo.png" height="24" alt=""> 幻兽帕鲁 (Palworld)
 
 ## 技术栈
 
