@@ -22,7 +22,7 @@
 
 ## 支持的游戏
 
-支持任何使用标准 RCON 协议的游戏服务器，以下仅为经过测试的游戏：
+支持任何使用标准 RCON 协议的游戏服务器，以下经过测试并拥有快捷命令的游戏：
 
 - Minecraft
 - Squad
@@ -43,6 +43,9 @@
 - Python 3.11+ (Releases 打包版本无需安装)
 
 ## 快速开始
+
+> Windows 用户可直接从 [Releases](https://github.com/danTvT4730/YiQQ-Rcon/releases) 下载完整安装包，开箱即用。
+> Linux / macOS 用户需自行编译，参考下方「构建打包」章节。
 
 1. 克隆仓库
 
