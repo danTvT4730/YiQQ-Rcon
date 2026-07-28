@@ -22,12 +22,12 @@
 
 ## 支持的游戏
 
-支持任何使用标准 RCON 协议的游戏服务器，以下仅为经过测试的典型示例：
+支持任何使用标准 RCON 协议的游戏服务器，以下仅为经过测试的游戏：
 
-- <img src="https://cdn.simpleicons.org/minecraft" height="24" alt=""> Minecraft
-- <img src="https://shared.steamstatic.com/store_item_assets/steam/apps/393380/logo.png" height="24" alt=""> Squad
-- <img src="https://cdn.simpleicons.org/counterstrike" height="24" alt=""> Counter-Strike 2
-- <img src="https://shared.steamstatic.com/store_item_assets/steam/apps/1623730/logo.png" height="24" alt=""> 幻兽帕鲁 (Palworld)
+- Minecraft
+- Squad
+- Counter-Strike 2
+- 幻兽帕鲁 (Palworld)
 
 ## 技术栈
 
