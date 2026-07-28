@@ -22,13 +22,11 @@
 
 ## 支持的游戏
 
-| 游戏 | 实例类型 |
-| --- | --- |
-| Minecraft | minecraft |
-| Squad | squad |
-| Counter-Strike 2 | cs2 |
-| 幻兽帕鲁 (Palworld) | palworld |
-| 通用 RCON 服务 | generic |
+- Minecraft
+- Squad
+- Counter-Strike 2
+- 幻兽帕鲁 (Palworld)
+- 通用 RCON 服务
 
 ## 技术栈
 
@@ -41,14 +39,14 @@
 ## 环境要求
 
 - Windows 10/11、macOS 11+、主流 Linux 桌面发行版
-- Python 3.11+(Releases 打包版本无需安装)
+- Python 3.11+ (Releases 打包版本无需安装)
 
 ## 快速开始
 
 1. 克隆仓库
 
 ```bash
-git clone https://github.com/你的用户名/rcon.git
+git clone https://github.com/danTvT4730/YiQQ-Rcon/rcon.git
 cd rcon
 ```
 
