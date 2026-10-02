@@ -17,6 +17,9 @@ def get_data_dir() -> Path:
     if is_frozen() and sys.platform == "win32":
         base = os.environ.get("APPDATA") or str(Path.home())
         d = Path(base) / "YiQQ-Rcon"
+    elif is_frozen() and sys.platform.startswith("linux"):
+        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        d = Path(base) / "YiQQ-Rcon"
     else:
         d = Path(__file__).resolve().parent.parent / "data"
     d.mkdir(parents=True, exist_ok=True)
