@@ -174,6 +174,10 @@ class ConsoleBridge(QAbstractListModel):
     def hasRowSelection(self) -> bool:
         return self._sel_from >= 0 and self._sel_to >= 0
 
+    @Property(bool, notify=selectionChanged)
+    def hasSelection(self) -> bool:
+        return self._sel_from >= 0 and self._sel_to >= 0
+
     @Slot(result="QString")
     def selectedRowsText(self) -> str:
         if self._sel_from < 0 or self._sel_to < 0:

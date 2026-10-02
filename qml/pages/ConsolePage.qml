@@ -8,6 +8,26 @@ import "../utils.js" as Utils
 Item {
     id: root
 
+    function deselectAllTexts() {
+        var rows = consoleView.contentItem.children
+        for (var i = 0; i < rows.length; ++i) {
+            clearTextSelection(rows[i])
+        }
+    }
+
+    function clearTextSelection(item) {
+        if (item.deselect !== undefined) {
+            item.deselect()
+        }
+        var kids = item.children
+        if (kids === undefined) {
+            return
+        }
+        for (var j = 0; j < kids.length; ++j) {
+            clearTextSelection(kids[j])
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -127,14 +147,53 @@ Item {
             Layout.fillHeight: true
 
             MouseArea {
+                id: blankMouse
                 anchors.fill: parent
-                acceptedButtons: Qt.RightButton
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                onClicked: (mouse) => {
-                    var scene = mapToItem(null, mouse.x, mouse.y)
-                    copyMenu.openAt(appBridge.console.hasRowSelection()
-                                    ? appBridge.console.selectedRowsText() : "",
-                                    appBridge.console.copyAll(), scene.x, scene.y)
+                property int anchorRow: -1
+
+                function rowAt(itemY) {
+                    return Utils.rowIndexAt(consoleView.contentItem.children,
+                                            itemY + consoleView.contentY)
+                }
+
+                onPressed: (mouse) => {
+                    if (mouse.button === Qt.RightButton) {
+                        var scene = mapToItem(null, mouse.x, mouse.y)
+                        copyMenu.openAt(appBridge.console.hasRowSelection()
+                                        ? appBridge.console.selectedRowsText() : "",
+                                        appBridge.console.copyAll(), scene.x, scene.y)
+                        return
+                    }
+                    var row = blankMouse.rowAt(mouse.y)
+                    root.deselectAllTexts()
+                    blankMouse.anchorRow = row
+                    if (row >= 0) {
+                        appBridge.console.setAnchor(row)
+                    }
+                }
+
+                onPositionChanged: (mouse) => {
+                    if (blankMouse.anchorRow < 0) {
+                        return
+                    }
+                    var row = blankMouse.rowAt(mouse.y)
+                    if (row >= 0) {
+                        appBridge.console.extendSelection(row)
+                    }
+                }
+
+                onReleased: (mouse) => {
+                    blankMouse.anchorRow = -1
+                }
+
+                onWheel: (wheel) => {
+                    var delta = wheel.angleDelta.y
+                    var step = consoleView.height * 0.12
+                    var maxPos = Math.max(0, consoleView.contentHeight - consoleView.height)
+                    consoleView.contentY = Math.max(0, Math.min(maxPos, consoleView.contentY - delta / 120 * step))
+                    wheel.accepted = true
                 }
             }
 
@@ -142,6 +201,7 @@ Item {
                 id: consoleView
                 anchors.fill: parent
                 clip: true
+                interactive: false
                 model: appBridge.console
                 spacing: 2
 
@@ -294,6 +354,7 @@ Item {
                             return
                         }
                         rowMouse.anchorRow = index
+                        root.deselectAllTexts()
                         rowMouse.anchorChar = lineText.positionAt(
                             lineText.mapFromItem(rowMouse, mouse.x, mouse.y).x,
                             lineText.mapFromItem(rowMouse, mouse.x, mouse.y).y)
@@ -310,6 +371,9 @@ Item {
                         var here = rowMouse.mapToItem(consoleView.contentItem, mouse.x, mouse.y)
                         var target = Utils.rowIndexAt(consoleView.contentItem.children, here.y)
                         if (target >= 0 && target !== rowMouse.anchorRow) {
+                            if (!rowMouse.rowMode) {
+                                root.deselectAllTexts()
+                            }
                             rowMouse.rowMode = true
                             appBridge.console.extendSelection(target)
                             return
@@ -544,7 +608,7 @@ Item {
     Shortcut {
         sequence: StandardKey.Copy
         enabled: appBridge.currentPage === "console" && !commandInput.activeFocus
-                 && appBridge.console.hasRowSelection()
+                 && appBridge.console.hasSelection
         onActivated: clipboardBridge.copy(appBridge.console.selectedRowsText())
     }
 
