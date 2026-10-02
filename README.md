@@ -46,7 +46,9 @@
 
 > Windows 用户可直接从 [Releases](https://github.com/danTvT4730/YiQQ-Rcon/releases) 下载完整安装包，开箱即用。
 >
-> Linux / macOS 用户需自行编译，参考下方「构建打包」章节。
+> Linux 版提供 `.deb` 安装包，适配 Ubuntu 22.04+ / Debian 12+，也可按下方「构建打包」自行构建。
+>
+> macOS 用户需自行编译，参考下方「构建打包」章节。
 
 1. 克隆仓库
 
@@ -73,10 +75,11 @@ python main.py
 
 ```bash
 pip install pyinstaller
-pyinstaller build.spec
+pyinstaller build.spec        # Windows
+pyinstaller build_linux.spec  # Linux
 ```
 
-构建产物位于 `dist/YiQQ-Rcon/` 目录下。
+构建产物位于 `dist/YiQQ-Rcon/` 目录下。Linux 版建议在与目标系统一致的发行版上构建，产物基线为 glibc 2.35。
 
 ## 项目结构
 
