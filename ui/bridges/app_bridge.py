@@ -1,8 +1,9 @@
+import time
 from typing import Optional
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
-from core.i18n import get_i18n, tr
+from core.i18n import tr
 from core.rcon_client import ProxyConfig, ServerConfig
 from core.server_manager import ServerManager
 from ui.bridges.console_bridge import ConsoleBridge
@@ -59,12 +60,15 @@ class AppBridge(QObject):
         self._input_enabled: bool = False
         self._advanced: bool = False
         self._quick_commands: list = []
+        self._last_drop_notice: float = 0.0
+        self._pending_lost: bool = False
 
         self._connect_worker_signals()
 
     def _connect_worker_signals(self) -> None:
         self._worker.connected.connect(self._on_worker_connected)
         self._worker.disconnected.connect(self._on_worker_disconnected)
+        self._worker.connection_lost.connect(self._on_worker_connection_lost)
         self._worker.auth_failed.connect(self._on_worker_auth_failed)
         self._worker.error_occurred.connect(self._on_worker_error)
         self._worker.command_executing.connect(self._on_worker_command_executing)
@@ -234,7 +238,7 @@ class AppBridge(QObject):
         self.connectionStateChanged.emit(self._connection_state)
         self.statusMessageChanged.emit(self._status_message)
         self._console.appendMessage(msg, "system")
-        self._log.append(f"[{get_i18n().timestamp()}] {msg}")
+        self._log.append(msg)
         self._worker.request_connect(server, self._settings.config().proxy)
 
     @Slot(str)
@@ -333,7 +337,7 @@ class AppBridge(QObject):
         self._server_bridge.setConnected(self._current_server.id)
         msg = tr("console.connected", name=self._current_server.name, host=self._current_server.host, port=self._current_server.port)
         self._console.appendMessage(msg, "success")
-        self._log.append(f"[{get_i18n().timestamp()}] {msg}")
+        self._log.append(msg)
         self._history.load(self._current_server.id)
         self.historyCommandsChanged.emit(self._history.getCommands(self._current_server.id))
 
@@ -342,22 +346,38 @@ class AppBridge(QObject):
         current = self._current_server
         if last and current and current.id != last.id:
             return
+        lost_noticed = self._pending_lost
+        self._pending_lost = False
+        if current and not lost_noticed:
+            msg = tr("console.disconnected", name=current.name)
+            self._console.appendMessage(msg, "system")
+            self._log.append(msg)
+        self._apply_idle_state("status.disconnected" if lost_noticed else "status.ready")
+
+    def _on_worker_connection_lost(self, reason: str) -> None:
+        if time.monotonic() - self._last_drop_notice < 2.0:
+            return
+        self._last_drop_notice = time.monotonic()
+        self._pending_lost = True
+        msg = tr("console.connection_lost", reason=reason)
+        self._console.appendMessage(msg, "error")
+        self._log.append(msg)
+        self._apply_idle_state("status.disconnected")
+        self._worker.request_disconnect()
+
+    def _apply_idle_state(self, status_key: str) -> None:
         self._connection_state = "idle"
-        self._status_message = tr("status.ready")
+        self._status_message = tr(status_key)
         self._input_enabled = False
         self.connectionStateChanged.emit(self._connection_state)
         self.statusMessageChanged.emit(self._status_message)
         self.inputEnabledChanged.emit(self._input_enabled)
         self._server_bridge.clearConnected()
-        if current:
-            msg = tr("console.disconnected", name=current.name)
-            self._console.appendMessage(msg, "system")
-            self._log.append(f"[{get_i18n().timestamp()}] {msg}")
 
     def _on_worker_auth_failed(self) -> None:
         msg = tr("console.auth_failed")
         self._console.appendMessage(msg, "error")
-        self._log.append(f"[{get_i18n().timestamp()}] {msg}")
+        self._log.append(msg)
 
     def _on_worker_error(self, error: str) -> None:
         msg = tr("console.connect_failed", error=error)
@@ -366,23 +386,23 @@ class AppBridge(QObject):
         self._status_message = tr("common.error")
         self.connectionStateChanged.emit(self._connection_state)
         self.statusMessageChanged.emit(self._status_message)
-        self._log.append(f"[{get_i18n().timestamp()}] {msg}")
+        self._log.append(msg)
 
     def _on_worker_command_executing(self, command: str) -> None:
         self._console.appendCommand(command)
-        self._log.append(f"[{get_i18n().timestamp()}] > {command}")
+        self._log.append(f"> {command}")
 
     def _on_worker_command_result(self, command: str, response: str) -> None:
         if response:
             self._console.appendMessage(response, "response")
-            self._log.append(f"[{get_i18n().timestamp()}] {response}")
+            self._log.append(response)
         if self._current_server:
             self._history.add(self._current_server.id, command)
             self.historyCommandsChanged.emit(self._history.getCommands(self._current_server.id))
 
     def _on_worker_broadcast(self, text: str) -> None:
         self._console.appendBroadcast(text)
-        self._log.append(f"[{get_i18n().timestamp()}] [BROADCAST] {text}")
+        self._log.append(f"[BROADCAST] {text}")
 
     def _on_worker_packet(self, summary: str, detail: str) -> None:
         if not self._settings.consoleShowPackets:
@@ -400,6 +420,10 @@ class AppBridge(QObject):
     @Slot(bool)
     def setConsoleDark(self, dark: bool) -> None:
         self._console.set_dark(dark)
+
+    @Slot()
+    def applyLogSettings(self) -> None:
+        self._log.setRetentionDays(self._settings.config().log_retention_days)
 
     def shutdown(self) -> None:
         try:

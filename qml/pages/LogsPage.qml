@@ -8,6 +8,14 @@ import "../utils.js" as Utils
 Item {
     id: root
 
+    readonly property bool active: appBridge.currentPage === "logs"
+
+    onActiveChanged: {
+        if (active && appBridge.console.autoScroll) {
+            Qt.callLater(logView.positionViewAtEnd)
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: 20
@@ -43,6 +51,12 @@ Item {
                     model: appBridge.logs
                     spacing: 0
 
+                    onCountChanged: {
+                        if (appBridge.console.autoScroll) {
+                            Qt.callLater(logView.positionViewAtEnd)
+                        }
+                    }
+
                     add: Transition {
                         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
                     }
@@ -50,15 +64,78 @@ Item {
                         NumberAnimation { property: "opacity"; to: 1; duration: 140; easing.type: Easing.OutCubic }
                     }
 
-                    delegate: Text {
+                    delegate: Item {
+                        id: logRow
                         width: logView.width
-                        text: model.text
-                        color: Theme.textSub
-                        font.family: Theme.monoFontFamily
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
-                        topPadding: 3
-                        bottomPadding: 3
+                        height: logText.implicitHeight + 6
+
+                        function selectedSnapshot() {
+                            if (appBridge.logs.hasRowSelection())
+                                return appBridge.logs.selectedRowsText()
+                            return logText.selectedText
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: model.selected ? Theme.accentDim : "transparent"
+
+                            Behavior on color { ColorAnimation { duration: 90 } }
+                        }
+
+                        TextEdit {
+                            id: logText
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.topMargin: 3
+                            text: model.text
+                            color: Theme.textSub
+                            font.family: Theme.monoFontFamily
+                            font.pixelSize: 12
+                            wrapMode: TextEdit.Wrap
+                            textFormat: TextEdit.PlainText
+                            readOnly: true
+                            selectByMouse: true
+                            persistentSelection: true
+                            selectionColor: Theme.selectionBg
+                            selectedTextColor: Theme.selectionFg
+
+                            Keys.onPressed: (event) => {
+                                if (event.matches(StandardKey.SelectAll)) {
+                                    appBridge.logs.selectAllRows()
+                                    event.accepted = true
+                                } else if (event.matches(StandardKey.Copy) && appBridge.logs.hasRowSelection()) {
+                                    clipboardBridge.copy(appBridge.logs.selectedRowsText())
+                                    event.accepted = true
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                            onPressed: (mouse) => {
+                                if (mouse.button !== Qt.RightButton && (mouse.modifiers & Qt.ShiftModifier)) {
+                                    appBridge.logs.extendSelection(index)
+                                    mouse.accepted = true
+                                } else if (mouse.button !== Qt.RightButton) {
+                                    appBridge.logs.setAnchor(index)
+                                    mouse.accepted = false
+                                } else {
+                                    mouse.accepted = true
+                                }
+                            }
+
+                            onClicked: (mouse) => {
+                                if (mouse.button !== Qt.RightButton) {
+                                    return
+                                }
+                                var scene = mapToItem(null, mouse.x, mouse.y)
+                                copyMenu.openAt(logRow.selectedSnapshot(),
+                                                appBridge.logs.copyAll(), scene.x, scene.y)
+                            }
+                        }
                     }
 
                     ScrollBar.vertical: ScrollBar {
@@ -98,5 +175,11 @@ Item {
                 }
             }
         }
+    }
+
+    Comp.SelectionMenu {
+        id: copyMenu
+        parent: Overlay.overlay
+        model: appBridge.logs
     }
 }

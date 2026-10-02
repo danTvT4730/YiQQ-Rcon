@@ -9,9 +9,11 @@ from PySide6.QtQml import QQmlApplicationEngine
 from core.command_history import CommandHistory
 from core.config_manager import ConfigManager
 from core.i18n import set_language
+from core.log_store import LogStore
 from core.paths import resource_path
 from core.server_manager import ServerManager
 from ui.bridges.app_bridge import AppBridge
+from ui.bridges.clipboard_bridge import ClipboardBridge
 from ui.bridges.console_bridge import ConsoleBridge
 from ui.bridges.history_bridge import HistoryBridge
 from ui.bridges.i18n_bridge import I18nBridge
@@ -86,12 +88,13 @@ def main() -> int:
     i18n_bridge = I18nBridge()
     theme_bridge = ThemeBridge()
     theme_bridge.apply(config.theme)
+    clipboard_bridge = ClipboardBridge()
 
     server_manager = ServerManager()
     worker = RconWorker()
     settings_bridge = SettingsBridge(config)
     console_bridge = ConsoleBridge()
-    log_bridge = LogBridge()
+    log_bridge = LogBridge(LogStore(retention_days=config.log_retention_days))
     history_bridge = HistoryBridge(CommandHistory())
 
     app_bridge = AppBridge(
@@ -102,6 +105,7 @@ def main() -> int:
         log_bridge=log_bridge,
         history=history_bridge,
     )
+    app_bridge.applyConsoleSettings()
 
     avatar_path = resource_path("assets/avatar.png")
     assets_dir = resource_path("assets")
@@ -109,6 +113,7 @@ def main() -> int:
     engine.rootContext().setContextProperty("i18n", i18n_bridge)
     engine.rootContext().setContextProperty("themeBridge", theme_bridge)
     engine.rootContext().setContextProperty("appBridge", app_bridge)
+    engine.rootContext().setContextProperty("clipboardBridge", clipboard_bridge)
     engine.rootContext().setContextProperty("avatarUrl", QUrl.fromLocalFile(str(avatar_path)).toString())
     engine.rootContext().setContextProperty("assetsUrl", QUrl.fromLocalFile(str(assets_dir)).toString())
 

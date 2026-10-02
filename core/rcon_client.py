@@ -1,4 +1,5 @@
 import queue
+import select
 import socket
 import struct
 import threading
@@ -10,6 +11,14 @@ from typing import Callable, Optional
 
 SOCKET_TIMEOUT = 10
 CONNECT_TIMEOUT = 8
+RECV_POLL_TIMEOUT = 0.5
+NULL_TERMINATOR = b"\x00\x00"
+PARTIAL_FRAME_TIMEOUT = 10.0
+MAX_BODY_CHUNK = 4080
+RESPONSE_QUIET = 1.0
+EMPTY_RESPONSE_WAIT = 1.5
+MAX_PACKET = 4196
+MAX_ABSORB = 65536
 
 
 @dataclass
@@ -114,12 +123,17 @@ class RconClient:
         self._sock: Optional[socket.socket] = None
         self._authenticated = False
         self._running = False
+        self._closing = False
         self._recv_queue: queue.Queue = queue.Queue()
         self._recv_thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self._send_lock = threading.Lock()
+        self._inbuf = bytearray()
         self._cmd_id = 100
+        self._last_rx = 0.0
         self.on_broadcast: Optional[Callable[[str], None]] = None
         self.on_packet: Optional[Callable[[str, int, int, str, bytes], None]] = None
+        self.on_disconnect: Optional[Callable[[str], None]] = None
 
     def _next_cmd_id(self) -> int:
         with self._lock:
@@ -166,37 +180,117 @@ class RconClient:
         size = len(payload) + 10
         return struct.pack("<iii", size, req_id, req_type) + payload + b"\x00\x00"
 
-    def _recv_exact(self, n: int) -> bytes:
-        chunks = []
-        remaining = n
-        while remaining > 0:
-            chunk = self._sock.recv(remaining)
-            if not chunk:
-                raise RconConnectionError("Connection closed by remote")
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        return b"".join(chunks)
+    def _read_available(self) -> int:
+        """返回本次读到的字节数，0 表示对端关闭，-1 表示暂无数据"""
+        try:
+            chunk = self._sock.recv(65536)
+        except socket.timeout:
+            return -1
+        except OSError as e:
+            raise RconConnectionError(f"Read failed: {e}") from e
+        if not chunk:
+            return 0
+        self._inbuf += chunk
+        return len(chunk)
 
-    def _recv_packet(self) -> tuple:
-        header = self._recv_exact(4)
-        size = struct.unpack("<i", header)[0]
-        if size < 10 or size > 4196:
-            raise RconError(f"Invalid packet size: {size}")
-        payload = self._recv_exact(size)
-        req_id = struct.unpack("<i", payload[0:4])[0]
-        req_type = struct.unpack("<i", payload[4:8])[0]
+    def _decode_frame(self, frame: bytes) -> tuple:
+        req_id = struct.unpack("<i", frame[4:8])[0]
+        req_type = struct.unpack("<i", frame[8:12])[0]
         enc = self.server.encoding or "utf-8"
         try:
-            body = payload[8:-2].decode(enc, errors="replace")
+            body = frame[12:-2].decode(enc, errors="replace")
         except LookupError:
-            body = payload[8:-2].decode("utf-8", errors="replace")
-        raw = header + payload
-        return req_id, req_type, body, raw
+            body = frame[12:-2].decode("utf-8", errors="replace")
+        return req_id, req_type, body, frame
+
+    def _take_packet(self, depth: int = 0) -> Optional[tuple]:
+        buf = self._inbuf
+        if len(buf) < 4:
+            return None
+        size = struct.unpack("<i", bytes(buf[:4]))[0]
+        if size < 10 or size > MAX_PACKET:
+            return self._resync(size, depth)
+        if len(buf) < 4 + size:
+            return None
+        if bytes(buf[size + 2:size + 4]) != NULL_TERMINATOR:
+            return self._absorb(size)
+        frame = bytes(buf[:4 + size])
+        del buf[:4 + size]
+        return self._decode_frame(frame)
+
+    def _absorb(self, size: int) -> Optional[tuple]:
+        """服务器声明的 size 短于实际写入的字节数（按字符计数导致），按帧尾双 NUL 收全整帧"""
+        buf = self._inbuf
+        cap = size + 4 + MAX_ABSORB
+        end = buf.find(NULL_TERMINATOR, size + 3, cap)
+        if end < 0:
+            if len(buf) >= cap:
+                self._raise_invalid(size)
+            return None
+        frame = bytes(buf[:end + 2])
+        del buf[:end + 2]
+        return self._decode_frame(frame)
+
+    def _frame_at(self, offset: int) -> Optional[str]:
+        buf = self._inbuf
+        if offset + 12 > len(buf):
+            return None
+        size = struct.unpack("<i", bytes(buf[offset:offset + 4]))[0]
+        if not 10 <= size <= MAX_PACKET:
+            return None
+        req_id = struct.unpack("<i", bytes(buf[offset + 4:offset + 8]))[0]
+        req_type = struct.unpack("<i", bytes(buf[offset + 8:offset + 12]))[0]
+        if not 0 < req_id <= 1000000 or req_type not in (0, 2):
+            return None
+        end = offset + 4 + size
+        if end <= len(buf):
+            return "complete" if bytes(buf[end - 2:end]) == NULL_TERMINATOR else None
+        return "partial"
+
+    def _force_resync(self) -> bool:
+        buf = self._inbuf
+        if len(buf) < 5:
+            return False
+        limit = min(len(buf), MAX_ABSORB)
+        starts = range(1, max(1, limit - 3))
+        for want in ("complete", "partial"):
+            for start in starts:
+                if self._frame_at(start) == want:
+                    del buf[:start]
+                    return True
+        buf.clear()
+        return False
+
+    def _resync(self, size: int, depth: int) -> Optional[tuple]:
+        """包头落到正文里：丢掉残数据，回到下一个可信包头"""
+        if not self._force_resync():
+            self._raise_invalid(size)
+        if depth >= 4:
+            self._raise_invalid(size)
+        return self._take_packet(depth + 1)
+
+    def _raise_invalid(self, size: int) -> None:
+        head = bytes(self._inbuf[:min(12, len(self._inbuf))]).hex(" ")
+        raise RconError(f"Invalid packet size: {size} (head: {head}, buffered: {len(self._inbuf)})")
+
+    def _wait_packet(self, timeout: float) -> tuple:
+        deadline = time.time() + timeout
+        while True:
+            packet = self._take_packet()
+            if packet is not None:
+                return packet
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise RconConnectionError("Response timeout")
+            readable, _, _ = select.select([self._sock], [], [], min(remaining, RECV_POLL_TIMEOUT))
+            if readable and self._read_available() == 0:
+                raise RconConnectionError("Connection closed by remote")
 
     def _send(self, req_id: int, req_type: int, body: str) -> None:
         packet = self._pack(req_id, req_type, body)
         try:
-            self._sock.sendall(packet)
+            with self._send_lock:
+                self._sock.sendall(packet)
         except OSError as e:
             raise RconConnectionError(f"Send failed: {e}") from e
         if self.on_packet:
@@ -207,6 +301,9 @@ class RconClient:
 
     def connect(self) -> None:
         self._sock = self._create_socket()
+        self._inbuf.clear()
+        self._closing = False
+        self._last_rx = time.time()
         self._authenticate()
         self._running = True
         self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
@@ -215,9 +312,9 @@ class RconClient:
     def _authenticate(self) -> None:
         req_id = 1
         self._send(req_id, self.SERVERDATA_AUTH, self.server.password)
-        first_id, first_type, _, _ = self._recv_packet()
+        first_id, first_type, _, _ = self._wait_packet(SOCKET_TIMEOUT)
         if first_type == self.SERVERDATA_RESPONSE_VALUE:
-            resp_id, _, _, _ = self._recv_packet()
+            resp_id, _, _, _ = self._wait_packet(SOCKET_TIMEOUT)
             real_id = resp_id
         else:
             real_id = first_id
@@ -227,29 +324,63 @@ class RconClient:
         self._authenticated = True
 
     def _recv_loop(self) -> None:
-        while self._running:
-            try:
-                rid, rtype, body, raw = self._recv_packet()
-            except RconConnectionError:
-                if self._running:
-                    self._running = False
-                    self._recv_queue.put(None)
-                break
-            except RconError:
-                continue
-            except OSError:
-                if self._running:
-                    self._running = False
-                    self._recv_queue.put(None)
-                break
+        reason = ""
+        try:
+            while self._running:
+                readable, _, errored = select.select([self._sock], [], [], RECV_POLL_TIMEOUT)
+                if errored:
+                    raise RconConnectionError("Socket error")
+                if not readable:
+                    self._check_idle()
+                    continue
+                if self._read_available() == 0:
+                    raise RconConnectionError("Connection closed by remote")
+                self._drain_packets()
+        except RconConnectionError as e:
+            reason = str(e)
+        except OSError as e:
+            reason = str(e)
+        except (RconError, ValueError) as e:
+            reason = str(e)
+        self._handle_loop_exit(reason)
 
+    def _drain_packets(self) -> None:
+        while True:
+            packet = self._take_packet()
+            if packet is None:
+                return
+            rid, rtype, body, raw = packet
+            self._last_rx = time.time()
             if self.on_packet:
                 try:
                     self.on_packet("recv", rid, rtype, body, raw)
                 except Exception:
                     pass
-
             self._recv_queue.put((rid, rtype, body))
+
+    def _check_idle(self) -> None:
+        """不发任何保活包（实测部分服务器对空包会回一个声明长度却永不写完的残帧，
+        进而吞掉下一条命令的回包）；只清理收不齐的半截帧并重新同步"""
+        now = time.time()
+        if now - self._last_rx < PARTIAL_FRAME_TIMEOUT:
+            return
+        buf = self._inbuf
+        if len(buf) >= 4:
+            size = struct.unpack("<i", bytes(buf[:4]))[0]
+            if 10 <= size <= MAX_PACKET and len(buf) < 4 + size:
+                self._force_resync()
+                self._drain_packets()
+        self._last_rx = now
+
+    def _handle_loop_exit(self, reason: str) -> None:
+        if self._running:
+            self._running = False
+            self._recv_queue.put(None)
+        if reason and not self._closing and self.on_disconnect:
+            try:
+                self.on_disconnect(reason)
+            except Exception:
+                pass
 
     def execute(self, command: str) -> str:
         if not self.connected:
@@ -257,43 +388,35 @@ class RconClient:
         req_id = self._next_cmd_id()
         self._send(req_id, self.SERVERDATA_EXECCOMMAND, command)
         parts = []
-        sentinel_id = 9999
-        self._send(sentinel_id, self.SERVERDATA_RESPONSE_VALUE, "")
-        deadline = time.time() + SOCKET_TIMEOUT
-        last_id = -1
-        last_body = ""
-        got_response = False
-        while time.time() < deadline:
+        end_at = time.time() + SOCKET_TIMEOUT
+        while time.time() < end_at:
             try:
-                item = self._recv_queue.get(timeout=0.1)
+                item = self._recv_queue.get(timeout=0.05)
             except queue.Empty:
                 continue
             if item is None:
                 raise RconConnectionError("Connection closed by remote")
-            rid, rtype, body = item
-            if rid != req_id and rid != sentinel_id:
+            rid, _rtype, body = item
+            if rid != req_id:
                 self._handle_broadcast(body)
                 continue
-            if rid == sentinel_id and rtype == self.SERVERDATA_RESPONSE_VALUE:
-                if last_id == sentinel_id and last_body == "":
-                    break
-                if got_response:
-                    parts.append(last_body)
-                last_id = sentinel_id
-                last_body = ""
+            if not body:
+                if not parts:
+                    end_at = min(end_at, time.time() + EMPTY_RESPONSE_WAIT)
                 continue
-            last_id = rid
-            last_body = body
-            if rid == req_id:
-                got_response = True
-                if rtype == self.SERVERDATA_RESPONSE_VALUE:
-                    parts.append(body)
-                    if len(body) < 4090:
-                        break
-                else:
-                    parts.append(body)
-                    break
+            parts.append(body)
+            if self._body_size(body) >= MAX_BODY_CHUNK:
+                end_at = min(end_at, time.time() + RESPONSE_QUIET)
+            else:
+                break
         return "".join(parts)
+
+    def _body_size(self, body: str) -> int:
+        enc = self.server.encoding or "utf-8"
+        try:
+            return len(body.encode(enc))
+        except (UnicodeEncodeError, LookupError):
+            return len(body.encode("utf-8", "replace"))
 
     def _handle_broadcast(self, body: str) -> None:
         if self.on_broadcast:
@@ -303,6 +426,7 @@ class RconClient:
                 pass
 
     def _cleanup(self) -> None:
+        self._closing = True
         self._running = False
         if self._recv_thread is not None and self._recv_thread.is_alive():
             try:
@@ -317,6 +441,7 @@ class RconClient:
                 pass
             self._sock = None
         self._authenticated = False
+        self._inbuf.clear()
         while not self._recv_queue.empty():
             try:
                 self._recv_queue.get_nowait()

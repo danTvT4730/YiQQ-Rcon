@@ -7,6 +7,7 @@ from .rcon_client import ProxyConfig
 
 DEFAULT_LANGUAGE = "zh_CN"
 DEFAULT_THEME = "auto"
+DEFAULT_LOG_RETENTION_DAYS = 30
 
 _DEFAULT_CONFIG = {
     "language": DEFAULT_LANGUAGE,
@@ -16,6 +17,7 @@ _DEFAULT_CONFIG = {
     "console_show_timestamp": True,
     "console_show_packets": False,
     "console_auto_scroll": True,
+    "log_retention_days": DEFAULT_LOG_RETENTION_DAYS,
 }
 
 
@@ -110,3 +112,11 @@ class ConfigManager:
     @console_auto_scroll.setter
     def console_auto_scroll(self, value: bool) -> None:
         self._data["console_auto_scroll"] = bool(value)
+
+    @property
+    def log_retention_days(self) -> int:
+        return int(self._data.get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS))
+
+    @log_retention_days.setter
+    def log_retention_days(self, value: int) -> None:
+        self._data["log_retention_days"] = max(0, int(value))

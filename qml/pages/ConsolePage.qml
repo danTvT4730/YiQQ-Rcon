@@ -153,27 +153,63 @@ Item {
             }
 
             delegate: Item {
+                id: entryRoot
+
                 width: consoleView.width
-                height: entryType === "packet" ? packetLayout.implicitHeight : msgText.implicitHeight
+                height: entryType === "packet" ? packetLayout.implicitHeight : lineText.implicitHeight
 
                 readonly property string entryType: model.entryType
-                readonly property string level: model.level
-                readonly property string msgText: model.text
-                readonly property string msgDetail: model.detail
-                readonly property string msgTimestamp: model.timestamp
-                readonly property color msgColor: model.textColor
+                readonly property string bodyText: model.text
+                readonly property string detailText: model.detail
+                readonly property string stamp: model.timestamp
+                readonly property string levelColor: model.textColor
+                readonly property string displayText: stamp ? stamp + " " + bodyText : bodyText
 
-                Text {
-                    id: msgText
+                function selectedSnapshot() {
+                    if (appBridge.console.hasRowSelection())
+                        return appBridge.console.selectedRowsText()
+                    if (lineText.selectedText.length > 0)
+                        return lineText.selectedText
+                    if (packetHead.selectedText.length > 0)
+                        return packetHead.selectedText
+                    return packetBody.selectedText
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: model.selected ? Theme.accentDim : "transparent"
+
+                    Behavior on color { ColorAnimation { duration: 90 } }
+                }
+
+                TextEdit {
+                    id: lineText
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.leftMargin: 20
                     anchors.rightMargin: 20
-                    text: parent.msgTimestamp ? parent.msgTimestamp + " " + parent.msgText : parent.msgText
-                    color: parent.msgColor.length > 0 ? parent.msgColor : Theme.textMain
+                    visible: entryRoot.entryType !== "packet"
+                    text: entryRoot.displayText
+                    color: entryRoot.levelColor.length > 0 ? entryRoot.levelColor : Theme.textMain
                     font.family: Theme.monoFontFamily
                     font.pixelSize: appBridge.console.fontSize
-                    wrapMode: Text.Wrap
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
+                    selectionColor: Theme.selectionBg
+                    selectedTextColor: Theme.selectionFg
+
+                    Keys.onPressed: (event) => {
+                        if (event.matches(StandardKey.SelectAll)) {
+                            appBridge.console.selectAllRows()
+                            event.accepted = true
+                        } else if (event.matches(StandardKey.Copy) && appBridge.console.hasRowSelection()) {
+                            clipboardBridge.copy(appBridge.console.selectedRowsText())
+                            event.accepted = true
+                        }
+                    }
                 }
 
                 ColumnLayout {
@@ -183,24 +219,65 @@ Item {
                     anchors.leftMargin: 20
                     anchors.rightMargin: 20
                     spacing: 2
-                    visible: entryType === "packet"
 
-                    Text {
-                        text: parent.parent.msgTimestamp ? parent.parent.msgTimestamp + " " + parent.parent.msgText : parent.parent.msgText
+                    TextEdit {
+                        id: packetHead
+                        visible: entryRoot.entryType === "packet"
+                        text: entryRoot.displayText
                         color: Theme.yellow
                         font.family: Theme.monoFontFamily
                         font.pixelSize: appBridge.console.fontSize
                         Layout.fillWidth: true
+                        textFormat: TextEdit.PlainText
+                        readOnly: true
+                        selectByMouse: true
+                        persistentSelection: true
+                        selectionColor: Theme.selectionBg
+                        selectedTextColor: Theme.selectionFg
                     }
 
-                    Text {
-                        text: parent.parent.msgDetail
+                    TextEdit {
+                        id: packetBody
+                        visible: entryRoot.entryType === "packet"
+                        text: entryRoot.detailText
                         color: Theme.textMuted
                         font.family: Theme.monoFontFamily
                         font.pixelSize: appBridge.console.fontSize - 1
                         Layout.fillWidth: true
                         Layout.leftMargin: 16
-                        wrapMode: Text.Wrap
+                        wrapMode: TextEdit.Wrap
+                        textFormat: TextEdit.PlainText
+                        readOnly: true
+                        selectByMouse: true
+                        persistentSelection: true
+                        selectionColor: Theme.selectionBg
+                        selectedTextColor: Theme.selectionFg
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                    onPressed: (mouse) => {
+                        if (mouse.button !== Qt.RightButton && (mouse.modifiers & Qt.ShiftModifier)) {
+                            appBridge.console.extendSelection(index)
+                            mouse.accepted = true
+                        } else if (mouse.button !== Qt.RightButton) {
+                            appBridge.console.setAnchor(index)
+                            mouse.accepted = false
+                        } else {
+                            mouse.accepted = true
+                        }
+                    }
+
+                    onClicked: (mouse) => {
+                        if (mouse.button !== Qt.RightButton) {
+                            return
+                        }
+                        var scene = mapToItem(null, mouse.x, mouse.y)
+                        copyMenu.openAt(entryRoot.selectedSnapshot(),
+                                        appBridge.console.copyAll(), scene.x, scene.y)
                     }
                 }
             }
@@ -408,5 +485,11 @@ Item {
                 }
             }
         }
+    }
+
+    Comp.SelectionMenu {
+        id: copyMenu
+        parent: Overlay.overlay
+        model: appBridge.console
     }
 }

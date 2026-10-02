@@ -12,3 +12,4 @@ TabButton 1.0 TabButton.qml
 QuickCmdButton 1.0 QuickCmdButton.qml
 LinkPill 1.0 LinkPill.qml
 StyledScrollView 1.0 StyledScrollView.qml
+SelectionMenu 1.0 SelectionMenu.qml

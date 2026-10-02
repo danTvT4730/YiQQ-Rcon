@@ -21,6 +21,14 @@ Item {
     property bool selShowTimestamp: true
     property bool selShowPackets: false
     property bool selAutoScroll: true
+    property int selLogRetention: 30
+    readonly property var retentionOptions: [7, 30, 90, 0]
+
+    function retentionLabel(days) {
+        if (days <= 0)
+            return Utils.tr(i18n, "settings.logs.retention.forever")
+        return Utils.trFmt(i18n, "settings.logs.retention.value", { days: days })
+    }
 
     function fillFromConfig() {
         selLang = appBridge.settings.language
@@ -34,6 +42,7 @@ Item {
         selShowTimestamp = appBridge.settings.consoleShowTimestamp
         selShowPackets = appBridge.settings.consoleShowPackets
         selAutoScroll = appBridge.settings.consoleAutoScroll
+        selLogRetention = appBridge.settings.logRetentionDays
     }
 
     function applySettings() {
@@ -51,6 +60,7 @@ Item {
         appBridge.settings.consoleShowTimestamp = selShowTimestamp
         appBridge.settings.consoleShowPackets = selShowPackets
         appBridge.settings.consoleAutoScroll = selAutoScroll
+        appBridge.settings.logRetentionDays = selLogRetention
         appBridge.settings.save()
 
         if (selLang !== oldLang) {
@@ -60,6 +70,7 @@ Item {
             themeBridge.setMode(selTheme)
         }
         appBridge.applyConsoleSettings()
+        appBridge.applyLogSettings()
         appBridge.showServers()
     }
 
@@ -417,6 +428,87 @@ Item {
                         checked: selAutoScroll
                         onCheckedChanged: selAutoScroll = checked
                         Layout.leftMargin: 108
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
+                Layout.preferredHeight: logsCol.implicitHeight + 32
+                color: Theme.bgCard
+                border.color: Theme.border
+                border.width: 1
+                radius: Theme.radiusLarge
+                opacity: root.active ? 1 : 0
+                transform: Translate {
+                    y: root.active ? 0 : 10
+                    Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                }
+
+                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+
+                ColumnLayout {
+                    id: logsCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Text {
+                        text: Utils.tr(i18n, "settings.section.logs")
+                        color: Theme.textMain
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeLarge
+                        font.weight: Font.DemiBold
+                        Layout.topMargin: 2
+                    }
+
+                    RowLayout {
+                        spacing: 8
+
+                        Text {
+                            text: Utils.tr(i18n, "settings.logs.retention")
+                            color: Theme.textMain
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSizeNormal
+                            Layout.preferredWidth: 100
+                            horizontalAlignment: Text.AlignRight
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Comp.StyledComboBox {
+                            Layout.preferredWidth: 220
+                            model: root.retentionOptions
+                            textRole: ""
+                            displayText: root.retentionLabel(root.selLogRetention)
+                            onActivated: root.selLogRetention = root.retentionOptions[index]
+
+                            delegate: ItemDelegate {
+                                width: parent.width
+                                height: 32
+                                contentItem: Text {
+                                    text: root.retentionLabel(modelData)
+                                    color: highlighted ? Theme.accent : Theme.textMain
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSizeNormal
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: highlighted ? Theme.accentDim : "transparent"
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: Utils.tr(i18n, "settings.note.logs")
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeSmall
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
                     }
                 }
             }

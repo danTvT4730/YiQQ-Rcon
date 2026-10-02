@@ -5,6 +5,7 @@ __pycache__/
 .Python
 build/
 dist/
+installer/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -22,6 +23,7 @@ ENV/
 data/servers.json
 data/config.json
 data/history.json
+data/logs/
 
 *.spec.bak
 *.log

@@ -11,6 +11,7 @@ class SettingsBridge(QObject):
     themeChanged = Signal(str)
     proxyChanged = Signal()
     consoleChanged = Signal()
+    logsChanged = Signal()
 
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -128,6 +129,15 @@ class SettingsBridge(QObject):
     def consoleAutoScroll(self, value: bool) -> None:
         self._config.console_auto_scroll = bool(value)
         self.consoleChanged.emit()
+
+    @Property(int, notify=logsChanged)
+    def logRetentionDays(self) -> int:
+        return self._config.log_retention_days
+
+    @logRetentionDays.setter
+    def logRetentionDays(self, value: int) -> None:
+        self._config.log_retention_days = int(value)
+        self.logsChanged.emit()
 
     @Slot(result="QVariantMap")
     def proxyDict(self) -> dict:

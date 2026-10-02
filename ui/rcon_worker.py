@@ -15,6 +15,7 @@ from core.rcon_client import (
 class RconWorker(QObject):
     connected = Signal()
     disconnected = Signal()
+    connection_lost = Signal(str)
     auth_failed = Signal()
     error_occurred = Signal(str)
     command_executing = Signal(str)
@@ -70,6 +71,7 @@ class RconWorker(QObject):
             client = RconClient(server, proxy)
             client.on_broadcast = self._on_broadcast
             client.on_packet = self._on_packet
+            client.on_disconnect = self._on_client_disconnect
             client.connect()
             old = self._client
             self._client = client
@@ -87,6 +89,11 @@ class RconWorker(QObject):
         except (RconConnectionError, RconError) as e:
             self.state_changed.emit("error")
             self.error_occurred.emit(str(e))
+
+    def _on_client_disconnect(self, reason: str) -> None:
+        if self._client is None:
+            return
+        self.connection_lost.emit(reason)
 
     def _on_broadcast(self, body: str) -> None:
         self.broadcast_received.emit(body)
@@ -112,10 +119,7 @@ class RconWorker(QObject):
             result = client.execute(command)
             self.command_result.emit(command, result)
         except RconConnectionError as e:
-            self.error_occurred.emit(str(e))
-            self._cleanup_client()
-            self.state_changed.emit("disconnected")
-            self.disconnected.emit()
+            self.connection_lost.emit(str(e))
         except RconError as e:
             self.error_occurred.emit(str(e))
 
