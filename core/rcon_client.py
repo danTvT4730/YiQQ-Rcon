@@ -14,7 +14,7 @@ CONNECT_TIMEOUT = 8
 RECV_POLL_TIMEOUT = 0.5
 NULL_TERMINATOR = b"\x00\x00"
 PARTIAL_FRAME_TIMEOUT = 10.0
-MAX_BODY_CHUNK = 4080
+MAX_BODY_CHUNK = 4000
 RESPONSE_QUIET = 1.0
 EMPTY_RESPONSE_WAIT = 1.5
 MAX_PACKET = 4196
@@ -211,6 +211,8 @@ class RconClient:
         if size < 10 or size > MAX_PACKET:
             return self._resync(size, depth)
         if len(buf) < 4 + size:
+            if self._cut_to_complete_frame(4):
+                return self._take_packet(depth + 1)
             return None
         if bytes(buf[size + 2:size + 4]) != NULL_TERMINATOR:
             return self._absorb(size)
@@ -247,27 +249,44 @@ class RconClient:
             return "complete" if bytes(buf[end - 2:end]) == NULL_TERMINATOR else None
         return "partial"
 
-    def _force_resync(self) -> bool:
+    def _cut_to_complete_frame(self, from_offset: int) -> bool:
+        """半截帧迟迟收不齐、但缓冲里已经出现完整帧时，说明声明长度不可信，立刻切过去"""
+        buf = self._inbuf
+        limit = min(len(buf), MAX_ABSORB)
+        for start in range(from_offset, max(from_offset, limit - 3)):
+            if self._frame_at(start) == "complete":
+                del buf[:start]
+                return True
+        return False
+
+    def _force_resync(self, discard: bool = False) -> bool:
         buf = self._inbuf
         if len(buf) < 5:
+            if discard:
+                buf.clear()
+                return True
             return False
+        wants = ("complete", "partial") if discard else ("complete",)
         limit = min(len(buf), MAX_ABSORB)
-        starts = range(1, max(1, limit - 3))
-        for want in ("complete", "partial"):
-            for start in starts:
+        for want in wants:
+            for start in range(1, max(1, limit - 3)):
                 if self._frame_at(start) == want:
                     del buf[:start]
                     return True
-        buf.clear()
+        if discard:
+            buf.clear()
         return False
 
     def _resync(self, size: int, depth: int) -> Optional[tuple]:
-        """包头落到正文里：丢掉残数据，回到下一个可信包头"""
-        if not self._force_resync():
+        """包头落到正文里：丢掉残数据，回到下一个可信包头。
+        数据还没到齐时先等，攒满一个接收窗口仍无有效帧才判定流已损坏"""
+        if self._force_resync():
+            if depth >= 4:
+                self._raise_invalid(size)
+            return self._take_packet(depth + 1)
+        if len(self._inbuf) >= MAX_ABSORB:
             self._raise_invalid(size)
-        if depth >= 4:
-            self._raise_invalid(size)
-        return self._take_packet(depth + 1)
+        return None
 
     def _raise_invalid(self, size: int) -> None:
         head = bytes(self._inbuf[:min(12, len(self._inbuf))]).hex(" ")
@@ -367,8 +386,8 @@ class RconClient:
         buf = self._inbuf
         if len(buf) >= 4:
             size = struct.unpack("<i", bytes(buf[:4]))[0]
-            if 10 <= size <= MAX_PACKET and len(buf) < 4 + size:
-                self._force_resync()
+            if len(buf) < 4 + size or not 10 <= size <= MAX_PACKET:
+                self._force_resync(discard=True)
                 self._drain_packets()
         self._last_rx = now
 
