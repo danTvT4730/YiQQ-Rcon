@@ -31,7 +31,7 @@ FONT_FILES = [
 ]
 
 APP_NAME = "YiQQ-Rcon"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 ORG_NAME = "YiQQ-Rcon"
 
 
