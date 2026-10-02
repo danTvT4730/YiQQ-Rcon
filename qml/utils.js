@@ -17,6 +17,24 @@ function trFmt(i18n, key, args) {
     })
 }
 
+function rowIndexAt(children, y) {
+    var best = -1
+    var bestDist = 1e9
+    for (var i = 0; i < children.length; i++) {
+        var item = children[i]
+        if (item === undefined || item === null || item.rowIndex === undefined)
+            continue
+        if (y >= item.y && y <= item.y + item.height)
+            return item.rowIndex
+        var dist = (y < item.y) ? (item.y - y) : (y - (item.y + item.height))
+        if (dist < bestDist) {
+            bestDist = dist
+            best = item.rowIndex
+        }
+    }
+    return best
+}
+
 function pageIndex(page) {
     switch (page) {
         case "select": return 0

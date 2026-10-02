@@ -122,42 +122,58 @@ Item {
             }
         }
 
-        ListView {
-            id: consoleView
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-            model: appBridge.console
-            spacing: 2
 
-            add: Transition {
-                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 140; easing.type: Easing.OutCubic }
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+
+                onClicked: (mouse) => {
+                    var scene = mapToItem(null, mouse.x, mouse.y)
+                    copyMenu.openAt(appBridge.console.hasRowSelection()
+                                    ? appBridge.console.selectedRowsText() : "",
+                                    appBridge.console.copyAll(), scene.x, scene.y)
+                }
             }
 
-            ScrollBar.vertical: ScrollBar {
-                policy: ScrollBar.AsNeeded
-                implicitWidth: 8
-                contentItem: Rectangle {
+            ListView {
+                id: consoleView
+                anchors.fill: parent
+                clip: true
+                model: appBridge.console
+                spacing: 2
+
+                add: Transition {
+                    NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 140; easing.type: Easing.OutCubic }
+                }
+
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
                     implicitWidth: 8
-                    implicitHeight: 30
-                    radius: 4
-                    color: parent.pressed ? Theme.scrollHandleHover : Theme.scrollHandle
+                    contentItem: Rectangle {
+                        implicitWidth: 8
+                        implicitHeight: 30
+                        radius: 4
+                        color: parent.pressed ? Theme.scrollHandleHover : Theme.scrollHandle
+                    }
+                    background: Rectangle { color: "transparent" }
                 }
-                background: Rectangle { color: "transparent" }
-            }
 
-            onCountChanged: {
-                if (appBridge.console.autoScroll) {
-                    Qt.callLater(consoleView.positionViewAtEnd)
+                onCountChanged: {
+                    if (appBridge.console.autoScroll) {
+                        Qt.callLater(consoleView.positionViewAtEnd)
+                    }
                 }
-            }
 
-            delegate: Item {
+                delegate: Item {
                 id: entryRoot
 
                 width: consoleView.width
                 height: entryType === "packet" ? packetLayout.implicitHeight : lineText.implicitHeight
 
+                readonly property int rowIndex: index
                 readonly property string entryType: model.entryType
                 readonly property string bodyText: model.text
                 readonly property string detailText: model.detail
@@ -256,28 +272,59 @@ Item {
                 }
 
                 MouseArea {
+                    id: rowMouse
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                    onPressed: (mouse) => {
-                        if (mouse.button !== Qt.RightButton && (mouse.modifiers & Qt.ShiftModifier)) {
-                            appBridge.console.extendSelection(index)
-                            mouse.accepted = true
-                        } else if (mouse.button !== Qt.RightButton) {
-                            appBridge.console.setAnchor(index)
-                            mouse.accepted = false
-                        } else {
-                            mouse.accepted = true
-                        }
-                    }
+                    property int anchorRow: -1
+                    property int anchorChar: -1
+                    property bool rowMode: false
 
-                    onClicked: (mouse) => {
-                        if (mouse.button !== Qt.RightButton) {
+                    onPressed: (mouse) => {
+                        if (mouse.button === Qt.RightButton) {
+                            var scene = mapToItem(null, mouse.x, mouse.y)
+                            copyMenu.openAt(entryRoot.selectedSnapshot(),
+                                            appBridge.console.copyAll(), scene.x, scene.y)
+                            mouse.accepted = true
                             return
                         }
-                        var scene = mapToItem(null, mouse.x, mouse.y)
-                        copyMenu.openAt(entryRoot.selectedSnapshot(),
-                                        appBridge.console.copyAll(), scene.x, scene.y)
+                        if (mouse.modifiers & Qt.ShiftModifier) {
+                            appBridge.console.extendSelection(index)
+                            mouse.accepted = true
+                            return
+                        }
+                        rowMouse.anchorRow = index
+                        rowMouse.anchorChar = lineText.positionAt(
+                            lineText.mapFromItem(rowMouse, mouse.x, mouse.y).x,
+                            lineText.mapFromItem(rowMouse, mouse.x, mouse.y).y)
+                        rowMouse.rowMode = false
+                        lineText.forceActiveFocus()
+                        appBridge.console.setAnchor(index)
+                        mouse.accepted = true
+                    }
+
+                    onPositionChanged: (mouse) => {
+                        if (rowMouse.anchorRow < 0) {
+                            return
+                        }
+                        var here = rowMouse.mapToItem(consoleView.contentItem, mouse.x, mouse.y)
+                        var target = Utils.rowIndexAt(consoleView.contentItem.children, here.y)
+                        if (target >= 0 && target !== rowMouse.anchorRow) {
+                            rowMouse.rowMode = true
+                            appBridge.console.extendSelection(target)
+                            return
+                        }
+                        if (rowMouse.rowMode && target < 0) {
+                            appBridge.console.extendSelection(rowMouse.anchorRow)
+                        }
+                        rowMouse.rowMode = false
+                        var p = lineText.mapFromItem(rowMouse, mouse.x, mouse.y)
+                        lineText.select(rowMouse.anchorChar, lineText.positionAt(p.x, p.y))
+                    }
+
+                    onReleased: (mouse) => {
+                        rowMouse.anchorRow = -1
+                        rowMouse.anchorChar = -1
                     }
                 }
             }
@@ -289,6 +336,7 @@ Item {
                 color: Theme.textMuted
                 font.family: Theme.monoFontFamily
                 font.pixelSize: Theme.fontSizeNormal
+            }
             }
         }
 
@@ -485,6 +533,19 @@ Item {
                 }
             }
         }
+    }
+
+    Shortcut {
+        sequence: StandardKey.SelectAll
+        enabled: appBridge.currentPage === "console" && !commandInput.activeFocus
+        onActivated: appBridge.console.selectAllRows()
+    }
+
+    Shortcut {
+        sequence: StandardKey.Copy
+        enabled: appBridge.currentPage === "console" && !commandInput.activeFocus
+                 && appBridge.console.hasRowSelection()
+        onActivated: clipboardBridge.copy(appBridge.console.selectedRowsText())
     }
 
     Comp.SelectionMenu {

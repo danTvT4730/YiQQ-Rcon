@@ -43,6 +43,18 @@ Item {
                 border.color: Theme.border
                 border.width: 1
 
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+
+                    onClicked: (mouse) => {
+                        var scene = mapToItem(null, mouse.x, mouse.y)
+                        copyMenu.openAt(appBridge.logs.hasRowSelection()
+                                        ? appBridge.logs.selectedRowsText() : "",
+                                        appBridge.logs.copyAll(), scene.x, scene.y)
+                    }
+                }
+
                 ListView {
                     id: logView
                     anchors.fill: parent
@@ -68,6 +80,7 @@ Item {
                         id: logRow
                         width: logView.width
                         height: logText.implicitHeight + 6
+                        readonly property int rowIndex: index
 
                         function selectedSnapshot() {
                             if (appBridge.logs.hasRowSelection())
@@ -112,28 +125,58 @@ Item {
                         }
 
                         MouseArea {
+                            id: lineMouse
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                            onPressed: (mouse) => {
-                                if (mouse.button !== Qt.RightButton && (mouse.modifiers & Qt.ShiftModifier)) {
-                                    appBridge.logs.extendSelection(index)
-                                    mouse.accepted = true
-                                } else if (mouse.button !== Qt.RightButton) {
-                                    appBridge.logs.setAnchor(index)
-                                    mouse.accepted = false
-                                } else {
-                                    mouse.accepted = true
-                                }
-                            }
+                            property int anchorRow: -1
+                            property int anchorChar: -1
+                            property bool rowMode: false
 
-                            onClicked: (mouse) => {
-                                if (mouse.button !== Qt.RightButton) {
+                            onPressed: (mouse) => {
+                                if (mouse.button === Qt.RightButton) {
+                                    var scene = mapToItem(null, mouse.x, mouse.y)
+                                    copyMenu.openAt(logRow.selectedSnapshot(),
+                                                    appBridge.logs.copyAll(), scene.x, scene.y)
+                                    mouse.accepted = true
                                     return
                                 }
-                                var scene = mapToItem(null, mouse.x, mouse.y)
-                                copyMenu.openAt(logRow.selectedSnapshot(),
-                                                appBridge.logs.copyAll(), scene.x, scene.y)
+                                if (mouse.modifiers & Qt.ShiftModifier) {
+                                    appBridge.logs.extendSelection(index)
+                                    mouse.accepted = true
+                                    return
+                                }
+                                var start = logText.mapFromItem(lineMouse, mouse.x, mouse.y)
+                                lineMouse.anchorRow = index
+                                lineMouse.anchorChar = logText.positionAt(start.x, start.y)
+                                lineMouse.rowMode = false
+                                logText.forceActiveFocus()
+                                appBridge.logs.setAnchor(index)
+                                mouse.accepted = true
+                            }
+
+                            onPositionChanged: (mouse) => {
+                                if (lineMouse.anchorRow < 0) {
+                                    return
+                                }
+                                var here = lineMouse.mapToItem(logView.contentItem, mouse.x, mouse.y)
+                                var target = Utils.rowIndexAt(logView.contentItem.children, here.y)
+                                if (target >= 0 && target !== lineMouse.anchorRow) {
+                                    lineMouse.rowMode = true
+                                    appBridge.logs.extendSelection(target)
+                                    return
+                                }
+                                if (lineMouse.rowMode && target < 0) {
+                                    appBridge.logs.extendSelection(lineMouse.anchorRow)
+                                }
+                                lineMouse.rowMode = false
+                                var p = logText.mapFromItem(lineMouse, mouse.x, mouse.y)
+                                logText.select(lineMouse.anchorChar, logText.positionAt(p.x, p.y))
+                            }
+
+                            onReleased: (mouse) => {
+                                lineMouse.anchorRow = -1
+                                lineMouse.anchorChar = -1
                             }
                         }
                     }
@@ -175,6 +218,18 @@ Item {
                 }
             }
         }
+    }
+
+    Shortcut {
+        sequence: StandardKey.SelectAll
+        enabled: appBridge.currentPage === "logs"
+        onActivated: appBridge.logs.selectAllRows()
+    }
+
+    Shortcut {
+        sequence: StandardKey.Copy
+        enabled: appBridge.currentPage === "logs" && appBridge.logs.hasRowSelection()
+        onActivated: clipboardBridge.copy(appBridge.logs.selectedRowsText())
     }
 
     Comp.SelectionMenu {
