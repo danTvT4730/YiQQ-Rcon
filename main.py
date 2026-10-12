@@ -1,27 +1,8 @@
 import sys
-from pathlib import Path
 
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
-from PySide6.QtQuickControls2 import QQuickStyle
-from PySide6.QtQml import QQmlApplicationEngine
-
-from core.command_history import CommandHistory
-from core.config_manager import ConfigManager
-from core.i18n import set_language
-from core.log_store import LogStore
-from core.paths import resource_path
-from core.server_manager import ServerManager
-from ui.bridges.app_bridge import AppBridge
-from ui.bridges.clipboard_bridge import ClipboardBridge
-from ui.bridges.console_bridge import ConsoleBridge
-from ui.bridges.history_bridge import HistoryBridge
-from ui.bridges.i18n_bridge import I18nBridge
-from ui.bridges.log_bridge import LogBridge
-from ui.bridges.settings_bridge import SettingsBridge
-from ui.bridges.theme_bridge import ThemeBridge
-from ui.icon_provider import IconImageProvider
-from ui.rcon_worker import RconWorker
+APP_NAME = "YiQQ-Rcon"
+APP_VERSION = "1.0.2"
+ORG_NAME = "YiQQ-Rcon"
 
 FONT_FILES = [
     "HarmonyOS_Sans_SC_Regular.ttf",
@@ -30,12 +11,20 @@ FONT_FILES = [
     "HarmonyOS_Sans_SC_Black.ttf",
 ]
 
-APP_NAME = "YiQQ-Rcon"
-APP_VERSION = "1.0.1"
-ORG_NAME = "YiQQ-Rcon"
+USAGE = f"""YiQQ-Rcon {APP_VERSION}
+
+usage:
+  YiQQ-Rcon                start the desktop app
+  YiQQ-Rcon --mcp          run the MCP server over stdio (for AI clients)
+  YiQQ-Rcon --help         show this help
+"""
 
 
 def load_fonts() -> str:
+    from PySide6.QtGui import QFontDatabase
+
+    from core.paths import resource_path
+
     fonts_dir = resource_path("assets/fonts")
     families: list[str] = []
     for fname in FONT_FILES:
@@ -52,7 +41,29 @@ def load_fonts() -> str:
     return families[0] if families else ""
 
 
-def main() -> int:
+def run_gui() -> int:
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QFont, QGuiApplication, QIcon
+    from PySide6.QtQuickControls2 import QQuickStyle
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    from core.command_history import CommandHistory
+    from core.config_manager import ConfigManager
+    from core.i18n import set_language
+    from core.log_store import LogStore
+    from core.paths import resource_path
+    from core.server_manager import ServerManager
+    from ui.bridges.app_bridge import AppBridge
+    from ui.bridges.clipboard_bridge import ClipboardBridge
+    from ui.bridges.console_bridge import ConsoleBridge
+    from ui.bridges.history_bridge import HistoryBridge
+    from ui.bridges.i18n_bridge import I18nBridge
+    from ui.bridges.log_bridge import LogBridge
+    from ui.bridges.settings_bridge import SettingsBridge
+    from ui.bridges.theme_bridge import ThemeBridge
+    from ui.icon_provider import IconImageProvider
+    from ui.rcon_worker import RconWorker
+
     if sys.platform == "win32":
         try:
             import ctypes
@@ -125,6 +136,22 @@ def main() -> int:
         return -1
 
     return app.exec()
+
+
+def run_mcp() -> int:
+    from core.mcp_server import run_mcp_server
+
+    return run_mcp_server()
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if "--mcp" in args:
+        return run_mcp()
+    if "--help" in args or "-h" in args:
+        sys.stdout.write(USAGE)
+        return 0
+    return run_gui()
 
 
 if __name__ == "__main__":

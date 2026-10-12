@@ -1,3 +1,7 @@
+import json
+import sys
+from pathlib import Path
+
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from core.config_manager import ConfigManager
@@ -12,6 +16,7 @@ class SettingsBridge(QObject):
     proxyChanged = Signal()
     consoleChanged = Signal()
     logsChanged = Signal()
+    mcpChanged = Signal()
 
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -138,6 +143,42 @@ class SettingsBridge(QObject):
     def logRetentionDays(self, value: int) -> None:
         self._config.log_retention_days = int(value)
         self.logsChanged.emit()
+
+    @Property(bool, notify=mcpChanged)
+    def mcpEnabled(self) -> bool:
+        return self._config.mcp_enabled
+
+    @mcpEnabled.setter
+    def mcpEnabled(self, value: bool) -> None:
+        self._config.mcp_enabled = bool(value)
+        self.mcpChanged.emit()
+
+    @Property("QVariantList", notify=mcpChanged)
+    def mcpForbidden(self) -> list:
+        return self._config.mcp_forbidden_commands
+
+    @mcpForbidden.setter
+    def mcpForbidden(self, value) -> None:
+        self._config.mcp_forbidden_commands = value
+        self.mcpChanged.emit()
+
+    @Slot(result=str)
+    def mcpClientConfig(self) -> str:
+        command = self._mcp_command()
+        return json.dumps(
+            {"mcpServers": {"yiQQ-rcon": {"command": command[0], "args": command[1:]}}},
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    @staticmethod
+    def _mcp_command() -> list:
+        if getattr(sys, "frozen", False):
+            suffix = ".exe" if sys.platform == "win32" else ""
+            exe = Path(sys.executable).with_name(f"YiQQ-Rcon-MCP{suffix}")
+            return [str(exe), "--mcp"]
+        entry = Path(__file__).resolve().parent.parent.parent / "main.py"
+        return [sys.executable, str(entry), "--mcp"]
 
     @Slot(result="QVariantMap")
     def proxyDict(self) -> dict:

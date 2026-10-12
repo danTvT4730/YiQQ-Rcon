@@ -1,6 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller build spec for YiQQ-Rcon (Linux)
 # Usage:  pyinstaller build_linux.spec
+# Builds two entry points into one folder: YiQQ-Rcon (windowed GUI) and YiQQ-Rcon-MCP (console stdio)
+
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -25,7 +28,7 @@ a = Analysis(
         'PySide6.QtQuickDialogs2',
         'PySide6.QtQuickTemplates2',
         'PySide6.QtQml',
-    ],
+    ] + collect_submodules('mcp', filter=lambda name: not name.startswith('mcp.cli')),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,6 +38,8 @@ a = Analysis(
         'pydoc',
         'doctest',
         'pdb',
+        'numpy',
+        'PIL',
     ],
     noarchive=False,
 )
@@ -59,8 +64,27 @@ exe = EXE(
     entitlements_file=None,
 )
 
+exe_mcp = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='YiQQ-Rcon-MCP',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
 coll = COLLECT(
     exe,
+    exe_mcp,
     a.binaries,
     a.zipfiles,
     a.datas,

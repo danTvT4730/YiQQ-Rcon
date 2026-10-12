@@ -22,7 +22,79 @@ Item {
     property bool selShowPackets: false
     property bool selAutoScroll: true
     property int selLogRetention: 30
+    property bool selMcpEnabled: false
+    property string selNewMode: "prefix"
+    property var selForbidden: []
+    property string forbiddenHint: ""
     readonly property var retentionOptions: [7, 30, 90, 0]
+    readonly property var blockModeOptions: ["prefix", "contains", "exact"]
+    readonly property var blockModeLabels: [
+        Utils.tr(i18n, "settings.mcp.block_mode.prefix"),
+        Utils.tr(i18n, "settings.mcp.block_mode.contains"),
+        Utils.tr(i18n, "settings.mcp.block_mode.exact")
+    ]
+    readonly property var blockModeShortLabels: [
+        Utils.tr(i18n, "settings.mcp.block_mode.short.prefix"),
+        Utils.tr(i18n, "settings.mcp.block_mode.short.contains"),
+        Utils.tr(i18n, "settings.mcp.block_mode.short.exact")
+    ]
+
+    function blockModeLabel(mode) {
+        if (mode === "contains")
+            return Utils.tr(i18n, "settings.mcp.block_mode.contains")
+        if (mode === "exact")
+            return Utils.tr(i18n, "settings.mcp.block_mode.exact")
+        return Utils.tr(i18n, "settings.mcp.block_mode.prefix")
+    }
+
+    function blockModeShortLabel(mode) {
+        if (mode === "contains")
+            return Utils.tr(i18n, "settings.mcp.block_mode.short.contains")
+        if (mode === "exact")
+            return Utils.tr(i18n, "settings.mcp.block_mode.short.exact")
+        return Utils.tr(i18n, "settings.mcp.block_mode.short.prefix")
+    }
+
+    function blockModeDesc(mode) {
+        if (mode === "contains")
+            return Utils.tr(i18n, "settings.mcp.block_mode.desc.contains")
+        if (mode === "exact")
+            return Utils.tr(i18n, "settings.mcp.block_mode.desc.exact")
+        return Utils.tr(i18n, "settings.mcp.block_mode.desc.prefix")
+    }
+
+    function addForbidden(value) {
+        var entry = (value || "").trim()
+        if (entry === "")
+            return
+        for (var i = 0; i < selForbidden.length; i++) {
+            if (String(selForbidden[i].command).toLowerCase() === entry.toLowerCase()) {
+                forbiddenHint = Utils.tr(i18n, "settings.mcp.forbidden.exists")
+                return
+            }
+        }
+        forbiddenHint = ""
+        selForbidden = selForbidden.concat([{ command: entry, mode: selNewMode }])
+        forbiddenInput.text = ""
+    }
+
+    function setForbiddenMode(index, mode) {
+        var next = []
+        for (var i = 0; i < selForbidden.length; i++) {
+            next.push({
+                command: selForbidden[i].command,
+                mode: i === index ? mode : selForbidden[i].mode
+            })
+        }
+        selForbidden = next
+    }
+
+    function removeForbidden(index) {
+        var next = selForbidden.slice()
+        next.splice(index, 1)
+        selForbidden = next
+        forbiddenHint = ""
+    }
 
     function retentionLabel(days) {
         if (days <= 0)
@@ -43,6 +115,12 @@ Item {
         selShowPackets = appBridge.settings.consoleShowPackets
         selAutoScroll = appBridge.settings.consoleAutoScroll
         selLogRetention = appBridge.settings.logRetentionDays
+        selMcpEnabled = appBridge.settings.mcpEnabled
+        selForbidden = (appBridge.settings.mcpForbidden || []).map(function (rule) {
+            return { command: String(rule.command), mode: String(rule.mode) }
+        })
+        selNewMode = "prefix"
+        forbiddenHint = ""
     }
 
     function applySettings() {
@@ -61,6 +139,8 @@ Item {
         appBridge.settings.consoleShowPackets = selShowPackets
         appBridge.settings.consoleAutoScroll = selAutoScroll
         appBridge.settings.logRetentionDays = selLogRetention
+        appBridge.settings.mcpEnabled = selMcpEnabled
+        appBridge.settings.mcpForbidden = selForbidden
         appBridge.settings.save()
 
         if (selLang !== oldLang) {
@@ -504,6 +584,194 @@ Item {
 
                     Text {
                         text: Utils.tr(i18n, "settings.note.logs")
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeSmall
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
+                Layout.preferredHeight: mcpCol.implicitHeight + 32
+                color: Theme.bgCard
+                border.color: Theme.border
+                border.width: 1
+                radius: Theme.radiusLarge
+                opacity: root.active ? 1 : 0
+                transform: Translate {
+                    y: root.active ? 0 : 10
+                    Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                }
+
+                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+
+                ColumnLayout {
+                    id: mcpCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Text {
+                        text: Utils.tr(i18n, "settings.section.mcp")
+                        color: Theme.textMain
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeLarge
+                        font.weight: Font.DemiBold
+                        Layout.topMargin: 2
+                    }
+
+                    Comp.StyledCheckBox {
+                        text: Utils.tr(i18n, "settings.mcp.enable")
+                        checked: selMcpEnabled
+                        onCheckedChanged: selMcpEnabled = checked
+                    }
+
+                    RowLayout {
+                        spacing: 8
+                        Layout.fillWidth: true
+                        enabled: selMcpEnabled
+                        opacity: selMcpEnabled ? 1 : 0.45
+
+                        Text {
+                            text: Utils.tr(i18n, "settings.mcp.forbidden")
+                            color: Theme.textMain
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSizeNormal
+                            Layout.preferredWidth: 100
+                            horizontalAlignment: Text.AlignRight
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Repeater {
+                                model: selForbidden
+                                delegate: RowLayout {
+                                    required property int index
+                                    id: forbiddenRule
+                                    spacing: 6
+
+                                    Rectangle {
+                                        Layout.preferredWidth: ruleLabel.implicitWidth + 16
+                                        Layout.preferredHeight: 28
+                                        Layout.alignment: Qt.AlignVCenter
+                                        radius: 14
+                                        color: Theme.accentDim
+                                        border.color: Theme.borderAccent
+                                        border.width: 1
+
+                                        Text {
+                                            id: ruleLabel
+                                            anchors.centerIn: parent
+                                            text: String(selForbidden[forbiddenRule.index].command)
+                                            color: Theme.textAccent
+                                            font.family: Theme.monoFontFamily
+                                            font.pixelSize: Theme.fontSizeSmall
+                                        }
+                                    }
+
+                                    Comp.StyledComboBox {
+                                        Layout.preferredWidth: 100
+                                        Layout.preferredHeight: 28
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        model: root.blockModeShortLabels
+                                        textRole: ""
+                                        displayText: root.blockModeShortLabel(selForbidden[forbiddenRule.index].mode)
+                                        onActivated: root.setForbiddenMode(
+                                            forbiddenRule.index, root.blockModeOptions[index])
+                                    }
+
+                                    Comp.IconButton {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        iconName: "x"
+                                        iconSize: 12
+                                        iconColor: Theme.textSub
+                                        implicitWidth: 22
+                                        implicitHeight: 22
+                                        onClicked: root.removeForbidden(forbiddenRule.index)
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Comp.StyledTextField {
+                                    id: forbiddenInput
+                                    Layout.fillWidth: true
+                                    isMono: true
+                                    placeholderText: Utils.tr(i18n, "settings.mcp.forbidden.placeholder")
+                                    onAccepted: root.addForbidden(text)
+                                }
+
+                                Comp.StyledComboBox {
+                                    Layout.preferredWidth: 140
+                                    model: root.blockModeLabels
+                                    textRole: ""
+                                    displayText: root.blockModeLabel(selNewMode)
+                                    onActivated: selNewMode = root.blockModeOptions[index]
+                                }
+
+                                Comp.GhostButton {
+                                    text: Utils.tr(i18n, "settings.mcp.forbidden.add")
+                                    iconName: "plus"
+                                    onClicked: root.addForbidden(forbiddenInput.text)
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.blockModeDesc(selNewMode)
+                                color: Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSizeSmall
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: forbiddenHint !== ""
+                                text: forbiddenHint
+                                color: Theme.red
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSizeSmall
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: selForbidden.length === 0
+                                    ? Utils.tr(i18n, "settings.mcp.forbidden.empty")
+                                    : Utils.tr(i18n, "settings.mcp.forbidden.hint")
+                                color: selForbidden.length === 0 ? Theme.amber : Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSizeSmall
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Item { Layout.fillWidth: true }
+
+                        Comp.GhostButton {
+                            text: Utils.tr(i18n, "settings.mcp.copy")
+                            iconName: "copy"
+                            onClicked: clipboardBridge.copy(appBridge.settings.mcpClientConfig())
+                        }
+                    }
+
+                    Text {
+                        text: Utils.tr(i18n, "settings.note.mcp")
                         color: Theme.textMuted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSizeSmall

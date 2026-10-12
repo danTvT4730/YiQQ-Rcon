@@ -14,7 +14,10 @@ def resource_path(rel: str) -> Path:
 
 
 def get_data_dir() -> Path:
-    if is_frozen() and sys.platform == "win32":
+    override = os.environ.get("YIQQ_RCON_DATA_DIR")
+    if override:
+        d = Path(override).expanduser()
+    elif is_frozen() and sys.platform == "win32":
         base = os.environ.get("APPDATA") or str(Path.home())
         d = Path(base) / "YiQQ-Rcon"
     elif is_frozen() and sys.platform.startswith("linux"):
