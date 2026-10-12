@@ -121,8 +121,8 @@ Linux 将 `command` 换成安装目录下的 `YiQQ-Rcon-MCP`。源码运行时�
 1. 克隆仓库
 
 ```bash
-git clone https://github.com/danTvT4730/YiQQ-Rcon/rcon.git
-cd rcon
+git clone https://github.com/danTvT4730/YiQQ-Rcon.git
+cd YiQQ-Rcon
 ```
 
 2. 安装依赖
@@ -181,15 +181,19 @@ rcon/
 ├── data/                   # 运行时数据（已 gitignore）
 │   ├── config.json         #   应用配置
 │   ├── servers.json        #   服务器列表
-│   └── history.json        #   命令历史
-├── main.py                 # 程序入口
-└── build.spec              # PyInstaller 构建配置
+│   ├── history.json        #   命令历史
+│   └── mcp_audit.log       #   MCP 执行与拒绝审计
+├── main.py                 # 程序入口（--mcp 启动 MCP 服务）
+├── build.spec              # PyInstaller 构建配置（Windows）
+└── build_linux.spec        # PyInstaller 构建配置（Linux）
 ```
 
 ## 数据存储
 
 - 开发模式：项目目录下的 `data/` 文件夹
-- 打包后：`%APPDATA%/YiQQ-Rcon/`
+- Windows 打包后：`%APPDATA%/YiQQ-Rcon/`
+- Linux 打包后：`~/.local/share/YiQQ-Rcon/`（XDG 数据目录，程序装在 `/opt` 时也能正常写）
+- 设置环境变量 `YIQQ_RCON_DATA_DIR` 可强制指定数据目录，便携部署或多实例时用
 
 服务器密码通过本地加密存储：Windows 使用 DPAPI（仅当前用户账户可解密），macOS/Linux 使用基于机器标识与用户名派生密钥的 Fernet 对称加密。
 
